@@ -1,0 +1,24 @@
+{
+    "cSpell.words": [
+        "esac",
+        "gofumpt",
+        "gosec",
+        "HEALTHCHECK",
+        "honnef",
+        "ldflags",
+        "masv",
+        "mvdan",
+        "mynonce",
+        "mystate",
+        "opcrypto",
+        "PKCE",
+        "rctx",
+        "securego",
+        "staticcheck",
+        "Testcontainer",
+        "testuser",
+        "userinfo",
+        "usermodel",
+        "vulncheck"
+    ]
+}

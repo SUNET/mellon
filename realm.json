@@ -1,0 +1,88 @@
+{
+  "realm": "test",
+  "enabled": true,
+  "accessTokenLifespan": 300,
+  "refreshTokenMaxReuse": 1800,
+  "accessCodeLifespan": 60,
+  "defaultSignatureAlgorithm": "RS256",
+  "clients": [
+    {
+      "clientId": "test-client",
+      "name": "Test Client",
+      "secret": "test-secret",
+      "redirectUris": ["http://localhost:3000/callback"],
+      "webOrigins": ["http://localhost:3000"],
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": true,
+      "defaultClientScopes": ["openid", "profile", "email"],
+      "optionalClientScopes": ["offline_access"],
+      "protocolMappers": [
+        {
+          "name": "birthdate",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "userinfo.token.claim": "true",
+            "user.attribute": "birthdate",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "claim.name": "birthdate",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "public-client",
+      "name": "Public PKCE Client",
+      "secret": "",
+      "redirectUris": ["http://localhost:3000/callback"],
+      "webOrigins": ["http://localhost:3000"],
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "defaultClientScopes": ["openid", "profile", "email"],
+      "optionalClientScopes": ["offline_access"]
+    }
+  ],
+  "users": [
+    {
+      "username": "testuser",
+      "email": "test@example.com",
+      "emailVerified": true,
+      "firstName": "Test",
+      "lastName": "User",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password"
+        }
+      ],
+      "clientRoles": {
+        "test-client": ["user"]
+      },
+      "realmRoles": ["user"],
+      "attributes": {
+        "birthdate": ["1990-01-15"]
+      }
+    }
+  ],
+  "roles": {
+    "realm": [
+      {"name": "user", "description": "Default user role"},
+      {"name": "admin", "description": "Administrator role"}
+    ],
+    "client": {
+      "test-client": [
+        {"name": "user", "description": "Client user role"}
+      ]
+    }
+  }
+}

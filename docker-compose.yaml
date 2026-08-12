@@ -1,0 +1,10 @@
+services:
+  mellon:
+    build: .
+    ports:
+      - "9080:8080"
+      - "9443:8443"
+    volumes:
+      - ./realm.json:/opt/keycloak/data/import/realm.json:ro
+    environment:
+      - KC_HOSTNAME_URL=http://localhost:9080
