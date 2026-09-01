@@ -3,7 +3,7 @@
 # ==============================================================================
 
 NAME                    := mellon
-VERSION                 ?= local
+VERSION                 ?= latest
 CURRENT_BRANCH          := $(shell git rev-parse --abbrev-ref HEAD)
 
 # Docker Configuration
