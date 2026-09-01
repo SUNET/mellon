@@ -83,11 +83,20 @@ release: check_current_branch ## Create and push a git tag (BUMP=major|minor|pat
 		patch) PATCH=$$((PATCH + 1)) ;; \
 	esac; \
 	NEW_TAG="v$${MAJOR}.$${MINOR}.$${PATCH}"; \
+	DOCKER_IMAGE="$(REGISTRY)/$(NAME):$$NEW_TAG"; \
+	DOCKER_LATEST="$(REGISTRY)/$(NAME):latest"; \
 	echo ""; \
 	echo "Bumping $$LATEST -> $$NEW_TAG ($(BUMP))"; \
 	echo ""; \
 	git tag -a "$$NEW_TAG" -m "Release $$NEW_TAG"; \
 	git push origin "$$NEW_TAG"; \
+	echo ""; \
+	echo "==> Building Docker image $$DOCKER_IMAGE"; \
+	docker build --tag "$$DOCKER_IMAGE" --tag "$$DOCKER_LATEST" .; \
+	echo "==> Pushing $$DOCKER_IMAGE"; \
+	docker push "$$DOCKER_IMAGE"; \
+	echo "==> Pushing $$DOCKER_LATEST (-> $$NEW_TAG)"; \
+	docker push "$$DOCKER_LATEST"; \
 	echo ""; \
 	echo "==> Release $$NEW_TAG created and pushed"; \
 	echo ""
