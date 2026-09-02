@@ -12,8 +12,8 @@ import (
 // placeholders (with optional ":default") in a raw realm-import document.
 // Substituted values are JSON-escaped so quotes/backslashes/newlines from
 // env values cannot break the JSON stream. Unknown prefixes are left
-// untouched so future Keycloak features degrade to a parse-time error
-// instead of silently blanking.
+// untouched; inside a quoted JSON string they load literally, outside one
+// they will usually cause a JSON parse error.
 func expandProperties(data []byte, sys map[string]string) ([]byte, error) {
 	var out strings.Builder
 	out.Grow(len(data))

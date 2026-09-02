@@ -94,7 +94,7 @@ Notes:
 
 - If a placeholder resolves to a missing variable with no default, it becomes an empty string and mellon logs a warning.
 - Substituted values are JSON-escaped, so env values containing `"`, `\`, or newlines won't break parsing. (This is a small, safe divergence from Keycloak's raw text substitution.)
-- Unknown prefixes (e.g. `${vault.foo}`) are left untouched so unfamiliar Keycloak features surface as a parse error rather than silently blanking.
+- Unknown prefixes (e.g. `${vault.foo}`) are left untouched. Inside a quoted JSON string they load literally, so you can spot them in the parsed config; outside a quoted string they will usually cause a JSON parse error.
 - Because expansion happens on the raw bytes before JSON parsing, placeholders may appear in numeric fields too: `"accessTokenLifespan": ${env.KC_TTL:300}`.
 
 ## Docker Image

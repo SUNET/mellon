@@ -28,7 +28,10 @@ docker-build: ## Build Docker image
 # Docker Push
 # ==============================================================================
 
-docker-push: ## Push Docker image
+docker-push: ## Push Docker image (refuses :latest unless FORCE=true)
+	@if [ "$(VERSION)" = "latest" ] && [ "$(FORCE)" != "true" ]; then \
+		echo "Error: refusing to push $(DOCKER_TAG). Set VERSION=vX.Y.Z or pass FORCE=true to override."; exit 1; \
+	fi
 	$(info Pushing $(DOCKER_TAG))
 	docker push $(DOCKER_TAG)
 
@@ -88,15 +91,16 @@ release: check_current_branch ## Create and push a git tag (BUMP=major|minor|pat
 	echo ""; \
 	echo "Bumping $$LATEST -> $$NEW_TAG ($(BUMP))"; \
 	echo ""; \
-	git tag -a "$$NEW_TAG" -m "Release $$NEW_TAG"; \
-	git push origin "$$NEW_TAG"; \
-	echo ""; \
 	echo "==> Building Docker image $$DOCKER_IMAGE"; \
 	docker build --tag "$$DOCKER_IMAGE" --tag "$$DOCKER_LATEST" .; \
 	echo "==> Pushing $$DOCKER_IMAGE"; \
 	docker push "$$DOCKER_IMAGE"; \
 	echo "==> Pushing $$DOCKER_LATEST (-> $$NEW_TAG)"; \
 	docker push "$$DOCKER_LATEST"; \
+	echo ""; \
+	echo "==> Tagging git $$NEW_TAG"; \
+	git tag -a "$$NEW_TAG" -m "Release $$NEW_TAG"; \
+	git push origin "$$NEW_TAG"; \
 	echo ""; \
 	echo "==> Release $$NEW_TAG created and pushed"; \
 	echo ""
