@@ -56,6 +56,60 @@ Set `"directAccessGrantsEnabled": true` on the client in `realm.json` to enable 
 
 Configure the service using a Keycloak-compatible `realm.json` file. See [realm.json](realm.json) for an example.
 
+### Property substitution
+
+`realm.json` supports Keycloak-style `${...}` placeholders that are expanded before the file is parsed. This lets you keep secrets and per-environment values out of the checked-in JSON, and keeps the file portable back to a real Keycloak container.
+
+| Syntax                       | Source                                    |
+| ---------------------------- | ----------------------------------------- |
+| `${env.NAME}`                | environment variable `NAME`               |
+| `${env.NAME:default}`        | environment variable, with fallback       |
+| `${sys.NAME}`                | system property `NAME` (see below)        |
+| `${sys.NAME:default}`        | system property, with fallback            |
+
+Example:
+
+```json
+{
+  "realm": "demo",
+  "users": [
+    {
+      "username": "demo",
+      "credentials": [
+        { "type": "password", "value": "${env.DEMO_USER_PASSWORD}" }
+      ]
+    }
+  ]
+}
+```
+
+System properties are supplied on the command line, Java-style, or via the `KC_SYS_PROPS` environment variable (comma-separated `k=v` pairs):
+
+```sh
+mellon -import-realm ./realm.json -D greeting=hello -D tier=dev
+KC_SYS_PROPS="greeting=hello,tier=dev" mellon -import-realm ./realm.json
+```
+
+Notes:
+
+- If a placeholder resolves to a missing variable with no default, it becomes an empty string and mellon logs a warning.
+- Substituted values are JSON-escaped, so env values containing `"`, `\`, or newlines won't break parsing. (This is a small, safe divergence from Keycloak's raw text substitution.)
+- Unknown prefixes (e.g. `${vault.foo}`) are left untouched. Inside a quoted JSON string they load literally, so you can spot them in the parsed config; outside a quoted string they will usually cause a JSON parse error.
+- Because expansion happens on the raw bytes before JSON parsing, placeholders may appear in numeric fields too: `"accessTokenLifespan": ${env.KC_TTL:300}`.
+
+## Docker Image
+
+Prebuilt images are published to SUNET's registry at `docker.sunet.se/iam_vc/mellon`.
+
+```sh
+docker pull docker.sunet.se/iam_vc/mellon:latest
+```
+
+Available tags:
+
+- `latest` — points to the most recent semver release.
+- `vX.Y.Z` — immutable tag for a specific release. Pin to one of these (e.g. in CI or testcontainers) when you need reproducible builds.
+
 ## Development
 
 ```sh

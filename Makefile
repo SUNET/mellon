@@ -3,7 +3,7 @@
 # ==============================================================================
 
 NAME                    := mellon
-VERSION                 ?= local
+VERSION                 ?= latest
 CURRENT_BRANCH          := $(shell git rev-parse --abbrev-ref HEAD)
 
 # Docker Configuration
@@ -28,7 +28,10 @@ docker-build: ## Build Docker image
 # Docker Push
 # ==============================================================================
 
-docker-push: ## Push Docker image
+docker-push: ## Push Docker image (refuses :latest unless FORCE=true)
+	@if [ "$(VERSION)" = "latest" ] && [ "$(FORCE)" != "true" ]; then \
+		echo "Error: refusing to push $(DOCKER_TAG). Set VERSION=vX.Y.Z or pass FORCE=true to override."; exit 1; \
+	fi
 	$(info Pushing $(DOCKER_TAG))
 	docker push $(DOCKER_TAG)
 
@@ -83,9 +86,19 @@ release: check_current_branch ## Create and push a git tag (BUMP=major|minor|pat
 		patch) PATCH=$$((PATCH + 1)) ;; \
 	esac; \
 	NEW_TAG="v$${MAJOR}.$${MINOR}.$${PATCH}"; \
+	DOCKER_IMAGE="$(REGISTRY)/$(NAME):$$NEW_TAG"; \
+	DOCKER_LATEST="$(REGISTRY)/$(NAME):latest"; \
 	echo ""; \
 	echo "Bumping $$LATEST -> $$NEW_TAG ($(BUMP))"; \
 	echo ""; \
+	echo "==> Building Docker image $$DOCKER_IMAGE"; \
+	docker build --tag "$$DOCKER_IMAGE" --tag "$$DOCKER_LATEST" .; \
+	echo "==> Pushing $$DOCKER_IMAGE"; \
+	docker push "$$DOCKER_IMAGE"; \
+	echo "==> Pushing $$DOCKER_LATEST (-> $$NEW_TAG)"; \
+	docker push "$$DOCKER_LATEST"; \
+	echo ""; \
+	echo "==> Tagging git $$NEW_TAG"; \
 	git tag -a "$$NEW_TAG" -m "Release $$NEW_TAG"; \
 	git push origin "$$NEW_TAG"; \
 	echo ""; \

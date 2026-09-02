@@ -80,10 +80,18 @@ type RoleConfig struct {
 	Description string `json:"description"`
 }
 
-func Load(path string) (*Config, error) {
+// Load reads a Keycloak-style realm.json from disk and expands
+// ${env.NAME} / ${sys.NAME} placeholders (with optional ":default")
+// before parsing. sysProps supplies values for ${sys.*}; pass nil if none.
+func Load(path string, sysProps map[string]string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read config file: %w", err)
+	}
+
+	data, err = expandProperties(data, sysProps)
+	if err != nil {
+		return nil, fmt.Errorf("expand config properties: %w", err)
 	}
 
 	var realm RealmConfig

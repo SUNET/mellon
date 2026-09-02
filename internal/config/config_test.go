@@ -22,7 +22,7 @@ func TestLoad(t *testing.T) {
 			"users": []
 		}`), 0644)
 
-		cfg, err := Load(path)
+		cfg, err := Load(path, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -47,7 +47,7 @@ func TestLoad(t *testing.T) {
 		path := filepath.Join(dir, "defaults.json")
 		os.WriteFile(path, []byte(`{"realm": "minimal"}`), 0644)
 
-		cfg, err := Load(path)
+		cfg, err := Load(path, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -69,7 +69,7 @@ func TestLoad(t *testing.T) {
 		path := filepath.Join(dir, "norealm.json")
 		os.WriteFile(path, []byte(`{"enabled": true}`), 0644)
 
-		_, err := Load(path)
+		_, err := Load(path, nil)
 		if err == nil {
 			t.Fatal("expected error for missing realm name")
 		}
@@ -79,16 +79,40 @@ func TestLoad(t *testing.T) {
 		path := filepath.Join(dir, "bad.json")
 		os.WriteFile(path, []byte(`{not json`), 0644)
 
-		_, err := Load(path)
+		_, err := Load(path, nil)
 		if err == nil {
 			t.Fatal("expected error for invalid json")
 		}
 	})
 
 	t.Run("file not found", func(t *testing.T) {
-		_, err := Load(filepath.Join(dir, "nonexistent.json"))
+		_, err := Load(filepath.Join(dir, "nonexistent.json"), nil)
 		if err == nil {
 			t.Fatal("expected error for missing file")
+		}
+	})
+
+	t.Run("env and sys expansion", func(t *testing.T) {
+		t.Setenv("MELLON_TEST_REALM", "expanded-realm")
+		path := filepath.Join(dir, "expand.json")
+		os.WriteFile(path, []byte(`{
+			"realm": "${env.MELLON_TEST_REALM}",
+			"defaultSignatureAlgorithm": "${sys.alg:RS256}",
+			"accessTokenLifespan": ${env.MELLON_TEST_TTL:900}
+		}`), 0644)
+
+		cfg, err := Load(path, map[string]string{"alg": "ES256"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Realm.Realm != "expanded-realm" {
+			t.Errorf("realm: got %q", cfg.Realm.Realm)
+		}
+		if cfg.Realm.SigningAlgorithm != "ES256" {
+			t.Errorf("alg: got %q", cfg.Realm.SigningAlgorithm)
+		}
+		if cfg.Realm.AccessTokenLifespan != 900 {
+			t.Errorf("ttl: got %d", cfg.Realm.AccessTokenLifespan)
 		}
 	})
 }
