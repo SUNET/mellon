@@ -16,7 +16,6 @@ import (
 func NewRouter(cfg *config.Config, kp *opcrypto.KeyPair, store *session.Store) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.RealIP)
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
