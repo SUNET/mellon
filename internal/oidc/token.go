@@ -34,6 +34,15 @@ func HandleToken(cfg *config.Config, kp *opcrypto.KeyPair, store *session.Store)
 			return
 		}
 		r.ParseForm()
+
+		// CORS: allow the browser to read the response (including errors)
+		// only when the Origin is in the calling client's webOrigins.
+		var allowed []string
+		if clientID, _, ok := extractClientCredentials(r); ok {
+			allowed = cfg.FindClient(clientID).AllowedOrigins()
+		}
+		setCORS(w, r, allowed)
+
 		grantType := r.FormValue("grant_type")
 
 		switch grantType {
@@ -117,8 +126,9 @@ func handleClientCredentialsGrant(w http.ResponseWriter, r *http.Request, cfg *c
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(cfg.Realm.AccessTokenLifespan) * time.Second)),
 			ID:        uuid.New().String(),
 		},
-		Scope:    scope,
-		ClientID: clientID,
+		Scope:          scope,
+		ClientID:       clientID,
+		AllowedOrigins: client.AllowedOrigins(),
 	}
 
 	accessToken, err := kp.SignAccessToken(atClaims)
@@ -242,6 +252,7 @@ func issueTokens(w http.ResponseWriter, cfg *config.Config, kp *opcrypto.KeyPair
 		PreferredUsername: username,
 		Email:             email,
 		EmailVerified:     emailVerified,
+		AllowedOrigins:    client.AllowedOrigins(),
 		Extra:             client.ResolveMappers(user, "access.token"),
 	}
 

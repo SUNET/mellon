@@ -11,6 +11,7 @@ func HandleJWKS(kp *opcrypto.KeyPair) http.HandlerFunc {
 	jwks := opcrypto.JWKSet{Keys: []opcrypto.JWK{kp.JWK()}}
 
 	return func(w http.ResponseWriter, r *http.Request) {
+		setCORSAnyOrigin(w, r)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(jwks)
 	}

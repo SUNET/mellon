@@ -40,6 +40,7 @@ type AccessTokenClaims struct {
 	PreferredUsername string                 `json:"preferred_username,omitempty"`
 	Email             string                 `json:"email,omitempty"`
 	EmailVerified     bool                   `json:"email_verified,omitempty"`
+	AllowedOrigins    []string               `json:"allowed-origins,omitempty"`
 	Extra             map[string]any `json:"-"`
 }
 

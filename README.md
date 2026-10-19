@@ -35,6 +35,24 @@ This service uses the same realm configuration format as Keycloak, including:
 - JWT signing with RS256, ES256, and EdDSA
 - Token introspection
 - Configurable protocol mappers for custom claims
+- CORS for browser-based clients, driven by each client's `webOrigins`
+
+## CORS
+
+Browser-based clients (e.g. SPAs doing Authorization Code + PKCE) can call the token and userinfo endpoints cross-origin. Allowed origins come from the client's `webOrigins` in `realm.json`, with Keycloak semantics:
+
+- `"https://app.example.com"` — exact origin match.
+- `"+"` — the origins (`scheme://host[:port]`) of all the client's `redirectUris`.
+- `"*"` — any origin.
+
+| Endpoint                         | CORS behaviour                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `token`                          | Origin must be in the calling client's `webOrigins` (applies to error responses too).            |
+| `userinfo`                       | Origin must be in the access token's `allowed-origins` claim. 401 responses are readable by any origin. |
+| `certs`, discovery               | Any origin.                                                                                      |
+| `auth`, `login`, `logout`, `token/introspect` | No CORS headers (page loads or server-to-server).                                   |
+
+Access tokens carry an `allowed-origins` claim, as Keycloak's do. `OPTIONS` preflight requests on the CORS-enabled endpoints return `204` with `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers: Authorization, Content-Type` and `Access-Control-Max-Age: 3600`; as in Keycloak, the preflight itself is permissive and the actual request enforces the origin. The allowed origin is always echoed (never a literal `*`), `Vary: Origin` is set, and `Access-Control-Allow-Credentials` is not sent.
 
 ## Headless / Testcontainer Usage
 
