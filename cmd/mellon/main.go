@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 
@@ -19,6 +20,8 @@ func main() {
 	httpAddr := flag.String("http-port", ":"+envOrDefault("KC_HTTP_PORT", "8080"), "HTTP listen address")
 	httpsAddr := flag.String("https-port", ":"+envOrDefault("KC_HTTPS_PORT", "8443"), "HTTPS listen address")
 	issuer := flag.String("hostname", envOrDefault("KC_HOSTNAME_URL", "http://localhost:8080"), "issuer base URL")
+	tlsCertFile := flag.String("https-certificate-file", envOrDefault("KC_HTTPS_CERTIFICATE_FILE", ""), "path to PEM TLS certificate (default: probe "+server.DefaultCertPath+", else self-signed)")
+	tlsKeyFile := flag.String("https-certificate-key-file", envOrDefault("KC_HTTPS_CERTIFICATE_KEY_FILE", ""), "path to PEM TLS private key (default: probe "+server.DefaultKeyPath+", else self-signed)")
 
 	sysProps := parseSysProps(os.Getenv("KC_SYS_PROPS"))
 	flag.Func("D", "system property for realm.json ${sys.*} expansion (repeatable: -D key=value)", func(s string) error {
@@ -61,7 +64,23 @@ func main() {
 	log.Printf("OIDC Provider starting for realm %q", cfg.Realm.Realm)
 	log.Printf("Discovery: %s/realms/%s/.well-known/openid-configuration", cfg.Issuer, cfg.Realm.Realm)
 
-	srv := server.New(router)
+	var tlsHosts []string
+	if u, err := url.Parse(*issuer); err == nil && u.Hostname() != "" {
+		tlsHosts = append(tlsHosts, u.Hostname())
+	}
+	tlsCert, tlsSource, err := server.LoadTLSCertificate(server.TLSOptions{
+		CertFile:        *tlsCertFile,
+		KeyFile:         *tlsKeyFile,
+		DefaultCertFile: server.DefaultCertPath,
+		DefaultKeyFile:  server.DefaultKeyPath,
+		Hosts:           tlsHosts,
+	})
+	if err != nil {
+		log.Fatalf("Failed to load TLS certificate: %v", err)
+	}
+	log.Printf("HTTPS certificate: %s", tlsSource)
+
+	srv := server.New(router, tlsCert)
 	if err := srv.Start(*httpAddr, *httpsAddr); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
