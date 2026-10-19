@@ -115,6 +115,36 @@ Notes:
 - Unknown prefixes (e.g. `${vault.foo}`) are left untouched. Inside a quoted JSON string they load literally, so you can spot them in the parsed config; outside a quoted string they will usually cause a JSON parse error.
 - Because expansion happens on the raw bytes before JSON parsing, placeholders may appear in numeric fields too: `"accessTokenLifespan": ${env.KC_TTL:300}`.
 
+## TLS
+
+mellon serves HTTPS on `8443` (`KC_HTTPS_PORT` / `-https-port`). The certificate is chosen in this order:
+
+1. **Explicit files** — set via env or flag (Keycloak-compatible names):
+
+   | Env                             | Flag                          |
+   | ------------------------------- | ----------------------------- |
+   | `KC_HTTPS_CERTIFICATE_FILE`     | `-https-certificate-file`     |
+   | `KC_HTTPS_CERTIFICATE_KEY_FILE` | `-https-certificate-key-file` |
+
+   Both must be set and must load, otherwise mellon exits with an error.
+
+2. **Default mount paths** — if nothing is set explicitly, mellon looks for
+   `/opt/keycloak/conf/server.crt.pem` and `/opt/keycloak/conf/server.key.pem`.
+   If only one exists or the pair fails to load, a warning is logged and mellon falls back to (3).
+
+3. **Self-signed** — a fresh P-256 certificate (CN `mellon`) with SANs `localhost`, `127.0.0.1`, `::1` and the host from `KC_HOSTNAME_URL`.
+
+Files are PEM; the certificate file may contain a full chain (leaf first). The chosen source is logged at startup (`HTTPS certificate: ...`).
+
+```yaml
+services:
+  mellon:
+    image: docker.sunet.se/iam_vc/mellon:latest
+    volumes:
+      - ./realm.json:/opt/keycloak/data/import/realm.json:ro
+      - ./certs:/opt/keycloak/conf:ro   # server.crt.pem + server.key.pem
+```
+
 ## Docker Image
 
 Prebuilt images are published to SUNET's registry at `docker.sunet.se/iam_vc/mellon`.

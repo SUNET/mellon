@@ -6,5 +6,8 @@ services:
       - "9443:8443"
     volumes:
       - ./realm.json:/opt/keycloak/data/import/realm.json:ro
+      # Optional: serve your own TLS cert instead of a self-signed one.
+      # Directory must contain server.crt.pem and server.key.pem.
+      # - ./certs:/opt/keycloak/conf:ro
     environment:
       - KC_HOSTNAME_URL=http://localhost:9080

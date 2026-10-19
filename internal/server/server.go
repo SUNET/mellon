@@ -2,16 +2,8 @@ package server
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/pem"
-	"fmt"
 	"log"
-	"math/big"
 	"net/http"
 	"os"
 	"os/signal"
@@ -23,10 +15,13 @@ type Server struct {
 	httpServer  *http.Server
 	httpsServer *http.Server
 	handler     http.Handler
+	tlsCert     tls.Certificate
 }
 
-func New(handler http.Handler) *Server {
-	return &Server{handler: handler}
+// New creates a server that serves handler over HTTP and over HTTPS using
+// tlsCert (see LoadTLSCertificate).
+func New(handler http.Handler, tlsCert tls.Certificate) *Server {
+	return &Server{handler: handler, tlsCert: tlsCert}
 }
 
 func (s *Server) Start(httpAddr, httpsAddr string) error {
@@ -38,11 +33,6 @@ func (s *Server) Start(httpAddr, httpsAddr string) error {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	tlsCert, err := generateSelfSignedCert()
-	if err != nil {
-		return fmt.Errorf("generate TLS cert: %w", err)
-	}
-
 	s.httpsServer = &http.Server{
 		Addr:         httpsAddr,
 		Handler:      s.handler,
@@ -50,7 +40,7 @@ func (s *Server) Start(httpAddr, httpsAddr string) error {
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
 		TLSConfig: &tls.Config{
-			Certificates: []tls.Certificate{tlsCert},
+			Certificates: []tls.Certificate{s.tlsCert},
 			MinVersion:   tls.VersionTLS12,
 		},
 	}
@@ -87,35 +77,4 @@ func (s *Server) Start(httpAddr, httpsAddr string) error {
 	s.httpServer.Shutdown(ctx)
 	s.httpsServer.Shutdown(ctx)
 	return nil
-}
-
-func generateSelfSignedCert() (tls.Certificate, error) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: "mellon"},
-		NotBefore:    time.Now(),
-		NotAfter:     time.Now().Add(365 * 24 * time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		DNSNames:     []string{"localhost"},
-	}
-
-	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	keyDER, err := x509.MarshalECPrivateKey(key)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
-
-	return tls.X509KeyPair(certPEM, keyPEM)
 }
