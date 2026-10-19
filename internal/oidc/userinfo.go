@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/masv3971/mellon/internal/config"
 	opcrypto "github.com/masv3971/mellon/internal/crypto"
 	"github.com/masv3971/mellon/internal/session"
@@ -44,6 +45,10 @@ func (u UserInfoResponse) MarshalJSON() ([]byte, error) {
 
 func HandleUserInfo(cfg *config.Config, kp *opcrypto.KeyPair, store *session.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Provisionally allow any origin so 401s are readable by the browser;
+		// once the token is known, restrict to its allowed-origins.
+		setCORSAnyOrigin(w, r)
+
 		token := extractBearerToken(r)
 		if token == "" {
 			w.Header().Set("WWW-Authenticate", "Bearer")
@@ -56,6 +61,12 @@ func HandleUserInfo(cfg *config.Config, kp *opcrypto.KeyPair, store *session.Sto
 			w.Header().Set("WWW-Authenticate", "Bearer error=\"invalid_token\"")
 			http.Error(w, "invalid_token", http.StatusUnauthorized)
 			return
+		}
+
+		if origin := r.Header.Get("Origin"); origin != "" {
+			if !originAllowed(origin, tokenAllowedOrigins(cfg, kp, token, at.ClientID)) {
+				clearCORS(w)
+			}
 		}
 
 		user := cfg.FindUser(at.Username)
@@ -87,6 +98,31 @@ func HandleUserInfo(cfg *config.Config, kp *opcrypto.KeyPair, store *session.Sto
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
 	}
+}
+
+// tokenAllowedOrigins returns the allowed-origins claim of an access token.
+// If the token cannot be parsed, it falls back to the issuing client's
+// configured origins.
+func tokenAllowedOrigins(cfg *config.Config, kp *opcrypto.KeyPair, token, clientID string) []string {
+	parsed, err := kp.ValidateToken(token)
+	if err != nil || !parsed.Valid {
+		return cfg.FindClient(clientID).AllowedOrigins()
+	}
+	claims, ok := parsed.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil
+	}
+	raw, ok := claims["allowed-origins"].([]any)
+	if !ok {
+		return nil
+	}
+	origins := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if s, ok := v.(string); ok {
+			origins = append(origins, s)
+		}
+	}
+	return origins
 }
 
 func extractBearerToken(r *http.Request) string {

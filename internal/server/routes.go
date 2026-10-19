@@ -24,14 +24,18 @@ func NewRouter(cfg *config.Config, kp *opcrypto.KeyPair, store *session.Store) h
 
 	r.Route("/realms/{realm}", func(r chi.Router) {
 		r.Get("/.well-known/openid-configuration", oidc.HandleDiscovery(cfg))
+		r.Options("/.well-known/openid-configuration", oidc.HandlePreflight("GET, OPTIONS"))
 
 		r.Route("/protocol/openid-connect", func(r chi.Router) {
 			r.Get("/auth", oidc.HandleAuthorize(cfg, store))
 			r.Post("/token", oidc.HandleToken(cfg, kp, store))
+			r.Options("/token", oidc.HandlePreflight("POST, OPTIONS"))
 			r.Post("/token/introspect", oidc.HandleIntrospect(cfg, kp, store))
 			r.Get("/userinfo", oidc.HandleUserInfo(cfg, kp, store))
 			r.Post("/userinfo", oidc.HandleUserInfo(cfg, kp, store))
+			r.Options("/userinfo", oidc.HandlePreflight("GET, POST, OPTIONS"))
 			r.Get("/certs", oidc.HandleJWKS(kp))
+			r.Options("/certs", oidc.HandlePreflight("GET, OPTIONS"))
 			r.Get("/logout", oidc.HandleLogout())
 			r.Post("/logout", oidc.HandleLogout())
 		})

@@ -3,7 +3,9 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
+	"strings"
 
 	opcrypto "github.com/masv3971/mellon/internal/crypto"
 )
@@ -158,6 +160,48 @@ func (c *Config) ValidateUserPassword(username, password string) *UserConfig {
 		}
 	}
 	return nil
+}
+
+// AllowedOrigins returns the CORS origins permitted for this client, derived
+// from webOrigins using Keycloak semantics: exact origins are kept, "+"
+// expands to the origins of all absolute redirectUris, and "*" allows any
+// origin. The result is deduplicated; nil if no origins are allowed.
+func (c *ClientConfig) AllowedOrigins() []string {
+	if c == nil {
+		return nil
+	}
+	var out []string
+	seen := make(map[string]bool)
+	add := func(o string) {
+		if o == "" || seen[o] {
+			return
+		}
+		seen[o] = true
+		out = append(out, o)
+	}
+	for _, wo := range c.WebOrigins {
+		wo = strings.TrimSpace(wo)
+		switch wo {
+		case "+":
+			for _, ru := range c.RedirectURIs {
+				add(originOf(ru))
+			}
+		default:
+			add(strings.TrimSuffix(wo, "/"))
+		}
+	}
+	return out
+}
+
+// originOf returns scheme://host[:port] of an absolute URI, or "" if the
+// URI is relative or unparsable. A trailing "*" wildcard is tolerated.
+func originOf(uri string) string {
+	uri = strings.TrimSuffix(strings.TrimSpace(uri), "*")
+	u, err := url.Parse(uri)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
 }
 
 // ResolveMappers returns extra claims for the given token target based on

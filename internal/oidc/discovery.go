@@ -29,6 +29,8 @@ type DiscoveryResponse struct {
 
 func HandleDiscovery(cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		setCORSAnyOrigin(w, r)
+
 		realm := chi.URLParam(r, "realm")
 		if realm == "" {
 			realm = cfg.Realm.Realm
