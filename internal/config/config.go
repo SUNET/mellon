@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -195,13 +196,31 @@ func (c *ClientConfig) AllowedOrigins() []string {
 
 // originOf returns scheme://host[:port] of an absolute URI, or "" if the
 // URI is relative or unparsable. A trailing "*" wildcard is tolerated.
+// The result is normalized the way browsers serialize the Origin header:
+// scheme and host are lowercased and default ports (80 for http, 443 for
+// https) are omitted.
 func originOf(uri string) string {
 	uri = strings.TrimSuffix(strings.TrimSpace(uri), "*")
 	u, err := url.Parse(uri)
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return ""
 	}
-	return u.Scheme + "://" + u.Host
+	scheme := strings.ToLower(u.Scheme)
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return ""
+	}
+	port := u.Port()
+	if (scheme == "http" && port == "80") || (scheme == "https" && port == "443") {
+		port = ""
+	}
+	if port != "" {
+		return scheme + "://" + net.JoinHostPort(host, port)
+	}
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	return scheme + "://" + host
 }
 
 // ResolveMappers returns extra claims for the given token target based on

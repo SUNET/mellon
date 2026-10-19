@@ -35,6 +35,36 @@ func TestClientAllowedOrigins(t *testing.T) {
 			want:         []string{"http://localhost:3000"},
 		},
 		{
+			name:         "plus omits default ports",
+			webOrigins:   []string{"+"},
+			redirectURIs: []string{"https://app.example.com:443/callback", "http://localhost:80/cb"},
+			want:         []string{"https://app.example.com", "http://localhost"},
+		},
+		{
+			name:         "plus keeps non-default ports",
+			webOrigins:   []string{"+"},
+			redirectURIs: []string{"https://app.example.com:80/callback", "http://localhost:443/cb"},
+			want:         []string{"https://app.example.com:80", "http://localhost:443"},
+		},
+		{
+			name:         "plus lowercases scheme and host",
+			webOrigins:   []string{"+"},
+			redirectURIs: []string{"HTTPS://App.Example.COM/Callback", "http://LocalHost:3000/cb"},
+			want:         []string{"https://app.example.com", "http://localhost:3000"},
+		},
+		{
+			name:         "plus dedupes normalized origins",
+			webOrigins:   []string{"+"},
+			redirectURIs: []string{"https://app.example.com/a", "https://APP.example.com:443/b"},
+			want:         []string{"https://app.example.com"},
+		},
+		{
+			name:         "plus with ipv6 host",
+			webOrigins:   []string{"+"},
+			redirectURIs: []string{"http://[::1]:80/cb", "http://[::1]:3000/cb"},
+			want:         []string{"http://[::1]", "http://[::1]:3000"},
+		},
+		{
 			name:       "star kept",
 			webOrigins: []string{"*"},
 			want:       []string{"*"},

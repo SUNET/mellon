@@ -14,7 +14,7 @@ DOCKER_TAG              := $(REGISTRY)/$(NAME):$(VERSION)
 # Phony Targets Declaration
 # ==============================================================================
 
-.PHONY: docker-build docker-push start stop restart release check_current_branch gosec staticcheck vulncheck fmt vscode
+.PHONY: docker-build docker-push start stop restart release check_current_branch gosec staticcheck vulncheck fmt vscode gh-install gh-auth
 
 # ==============================================================================
 # Docker Build
@@ -39,12 +39,33 @@ docker-push: ## Push Docker image (refuses :latest unless FORCE=true)
 # Development Environment
 # ==============================================================================
 
-vscode: ## Set up VS Code development environment
+vscode: gh-install ## Set up VS Code development environment
 	$(info Installing go packages)
 	go install github.com/securego/gosec/v2/cmd/gosec@latest && \
 	go install golang.org/x/vuln/cmd/govulncheck@latest && \
 	go install honnef.co/go/tools/cmd/staticcheck@latest && \
 	go install mvdan.cc/gofumpt@latest
+
+gh-install: ## Install GitHub CLI (gh)
+	$(info Install GitHub CLI)
+	@if ! command -v gh >/dev/null 2>&1; then \
+		sudo mkdir -p -m 755 /etc/apt/keyrings && \
+		curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && \
+		sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
+		echo "deb [arch=$$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
+		sudo apt-get update && \
+		sudo apt-get install -y gh; \
+	else \
+		echo "gh already installed: $$(gh --version | head -1)"; \
+	fi
+
+gh-auth: gh-install ## Authenticate GitHub CLI
+	$(info Authenticate GitHub CLI)
+	@if gh auth status >/dev/null 2>&1; then \
+		gh auth status; \
+	else \
+		gh auth login; \
+	fi
 
 # ==============================================================================
 # Release Management
