@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -239,5 +240,39 @@ func TestSignedTokenContainsExtraClaims(t *testing.T) {
 	}
 	if mapClaims["birthdate"] != "2000-06-15" {
 		t.Errorf("birthdate in signed token = %v", mapClaims["birthdate"])
+	}
+}
+
+func TestAudienceSerialization(t *testing.T) {
+	tests := []struct {
+		aud  jwt.ClaimStrings
+		want any
+	}{
+		{nil, nil},
+		{jwt.ClaimStrings{"api"}, "api"},
+		{jwt.ClaimStrings{"a", "b"}, []any{"a", "b"}},
+	}
+	for _, tt := range tests {
+		for name, v := range map[string]any{
+			"access": AccessTokenClaims{RegisteredClaims: jwt.RegisteredClaims{Audience: tt.aud}, Typ: "Bearer", AZP: "c"},
+			"id":     IDTokenClaims{RegisteredClaims: jwt.RegisteredClaims{Audience: tt.aud}, Typ: "ID"},
+		} {
+			data, err := json.Marshal(v)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var m map[string]any
+			json.Unmarshal(data, &m)
+			got, ok := m["aud"]
+			if tt.want == nil {
+				if ok {
+					t.Errorf("%s: aud = %v, want absent", name, got)
+				}
+				continue
+			}
+			if fmt.Sprint(got) != fmt.Sprint(tt.want) {
+				t.Errorf("%s: aud = %#v, want %#v", name, got, tt.want)
+			}
+		}
 	}
 }

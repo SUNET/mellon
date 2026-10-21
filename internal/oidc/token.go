@@ -90,8 +90,13 @@ func handleAuthCodeGrant(w http.ResponseWriter, r *http.Request, cfg *config.Con
 		return
 	}
 
+	if ac.ClientID != client.ClientID {
+		tokenError(w, "invalid_grant", "code was issued to another client", http.StatusBadRequest)
+		return
+	}
+
 	user := cfg.FindUser(ac.Username)
-	issueTokens(w, cfg, kp, store, client, user, ac.Scope, ac.Nonce)
+	issueTokens(w, cfg, kp, store, client, user, strings.Fields(ac.Scope), ac.Nonce, true)
 }
 
 func handleClientCredentialsGrant(w http.ResponseWriter, r *http.Request, cfg *config.Config, kp *opcrypto.KeyPair, store *session.Store) {
@@ -111,41 +116,14 @@ func handleClientCredentialsGrant(w http.ResponseWriter, r *http.Request, cfg *c
 		return
 	}
 
-	scope := r.FormValue("scope")
-	if scope == "" {
-		scope = strings.Join(client.DefaultClientScopes, " ")
-	}
-
-	now := time.Now()
-	atClaims := opcrypto.AccessTokenClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    cfg.Issuer + "/realms/" + cfg.Realm.Realm,
-			Subject:   clientID,
-			Audience:  jwt.ClaimStrings{clientID},
-			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(cfg.Realm.AccessTokenLifespan) * time.Second)),
-			ID:        uuid.New().String(),
-		},
-		Scope:          scope,
-		ClientID:       clientID,
-		AllowedOrigins: client.AllowedOrigins(),
-	}
-
-	accessToken, err := kp.SignAccessToken(atClaims)
-	if err != nil {
-		tokenError(w, "server_error", "failed to sign token", http.StatusInternalServerError)
+	granted, ok := grantScopes(w, cfg, client, r.FormValue("scope"))
+	if !ok {
 		return
 	}
 
-	store.StoreAccessToken(accessToken, clientID, "", scope, time.Duration(cfg.Realm.AccessTokenLifespan)*time.Second)
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(TokenResponse{
-		AccessToken: accessToken,
-		TokenType:   "Bearer",
-		ExpiresIn:   cfg.Realm.AccessTokenLifespan,
-		Scope:       scope,
-	})
+	// Keycloak does not issue refresh tokens for client_credentials by
+	// default ("use.refresh.tokens.client.credentials" is off).
+	issueTokens(w, cfg, kp, store, client, nil, granted, "", false)
 }
 
 func handlePasswordGrant(w http.ResponseWriter, r *http.Request, cfg *config.Config, kp *opcrypto.KeyPair, store *session.Store) {
@@ -177,12 +155,12 @@ func handlePasswordGrant(w http.ResponseWriter, r *http.Request, cfg *config.Con
 		return
 	}
 
-	scope := r.FormValue("scope")
-	if scope == "" {
-		scope = strings.Join(client.DefaultClientScopes, " ")
+	granted, ok := grantScopes(w, cfg, client, r.FormValue("scope"))
+	if !ok {
+		return
 	}
 
-	issueTokens(w, cfg, kp, store, client, user, scope, "")
+	issueTokens(w, cfg, kp, store, client, user, granted, "", true)
 }
 
 func handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, cfg *config.Config, kp *opcrypto.KeyPair, store *session.Store) {
@@ -209,51 +187,118 @@ func handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request, cfg *config
 		return
 	}
 
+	granted := strings.Fields(rt.Scope)
+	if requested := r.FormValue("scope"); requested != "" {
+		// Keycloak: a refresh request may narrow, but never widen, the
+		// originally granted scopes.
+		orig := make(map[string]bool, len(granted))
+		for _, s := range granted {
+			orig[s] = true
+		}
+		var invalid []string
+		for _, s := range strings.Fields(requested) {
+			if !orig[s] {
+				invalid = append(invalid, s)
+			}
+		}
+		if len(invalid) > 0 {
+			tokenError(w, "invalid_scope", (&config.ScopeError{Invalid: invalid}).Error(), http.StatusBadRequest)
+			return
+		}
+		narrowed, ok := grantScopes(w, cfg, client, requested)
+		if !ok {
+			return
+		}
+		var kept []string
+		for _, s := range narrowed {
+			if orig[s] {
+				kept = append(kept, s)
+			}
+		}
+		granted = kept
+	}
+
 	store.RevokeRefreshToken(refreshToken)
 
 	user := cfg.FindUser(rt.Username)
-	issueTokens(w, cfg, kp, store, client, user, rt.Scope, "")
+	issueTokens(w, cfg, kp, store, client, user, granted, "", true)
 }
 
-func issueTokens(w http.ResponseWriter, cfg *config.Config, kp *opcrypto.KeyPair, store *session.Store, client *config.ClientConfig, user *config.UserConfig, scope, nonce string) {
+// grantScopes applies the Keycloak scope rules for client and writes an
+// invalid_scope error response on failure.
+func grantScopes(w http.ResponseWriter, cfg *config.Config, client *config.ClientConfig, requested string) ([]string, bool) {
+	granted, err := cfg.GrantScopes(client, requested)
+	if err != nil {
+		tokenError(w, "invalid_scope", err.Error(), http.StatusBadRequest)
+		return nil, false
+	}
+	return granted, true
+}
+
+// issueTokens signs and returns the tokens for a grant. granted is the full
+// list of granted scopes (including those hidden from the scope claim); it
+// drives claim inclusion, protocol mappers and the audience.
+func issueTokens(w http.ResponseWriter, cfg *config.Config, kp *opcrypto.KeyPair, store *session.Store, client *config.ClientConfig, user *config.UserConfig, granted []string, nonce string, withRefresh bool) {
 	now := time.Now()
 	issuer := cfg.Issuer + "/realms/" + cfg.Realm.Realm
+	grantedStr := strings.Join(granted, " ")
+	tokenScope := cfg.TokenScope(granted)
+	hasProfile := config.HasScope(grantedStr, "profile")
+	hasEmail := config.HasScope(grantedStr, "email")
+
 	sub := client.ClientID
 	username := ""
-	email := ""
+	var email, givenName, familyName, name string
 	emailVerified := false
-	givenName := ""
-	familyName := ""
-	name := ""
 
 	if user != nil {
 		sub = user.Username
 		username = user.Username
-		email = user.Email
-		emailVerified = user.EmailVerified
-		givenName = user.FirstName
-		familyName = user.LastName
-		if givenName != "" || familyName != "" {
+		if hasEmail {
+			email = user.Email
+			emailVerified = user.EmailVerified
+		}
+		if hasProfile {
+			givenName = user.FirstName
+			familyName = user.LastName
 			name = strings.TrimSpace(givenName + " " + familyName)
 		}
+	}
+	preferredUsername := ""
+	if hasProfile {
+		preferredUsername = username
+		if user == nil {
+			// Keycloak's service-account user is named service-account-<clientId>.
+			preferredUsername = "service-account-" + client.ClientID
+		}
+	}
+
+	var accessAud jwt.ClaimStrings
+	if auds := cfg.AccessTokenAudience(client, granted); len(auds) > 0 {
+		accessAud = jwt.ClaimStrings(auds)
 	}
 
 	atClaims := opcrypto.AccessTokenClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    issuer,
 			Subject:   sub,
-			Audience:  jwt.ClaimStrings{client.ClientID},
+			Audience:  accessAud,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(cfg.Realm.AccessTokenLifespan) * time.Second)),
 			ID:        uuid.New().String(),
 		},
-		Scope:             scope,
+		Typ:               "Bearer",
+		AZP:               client.ClientID,
+		Scope:             tokenScope,
 		ClientID:          client.ClientID,
-		PreferredUsername: username,
+		PreferredUsername: preferredUsername,
+		Name:              name,
+		GivenName:         givenName,
+		FamilyName:        familyName,
 		Email:             email,
 		EmailVerified:     emailVerified,
 		AllowedOrigins:    client.AllowedOrigins(),
-		Extra:             client.ResolveMappers(user, "access.token"),
+		Extra:             cfg.ResolveClaims(client, granted, user, "access.token"),
 	}
 
 	accessToken, err := kp.SignAccessToken(atClaims)
@@ -262,44 +307,46 @@ func issueTokens(w http.ResponseWriter, cfg *config.Config, kp *opcrypto.KeyPair
 		return
 	}
 
-	store.StoreAccessToken(accessToken, client.ClientID, username, scope, time.Duration(cfg.Realm.AccessTokenLifespan)*time.Second)
+	store.StoreAccessToken(accessToken, client.ClientID, username, grantedStr, time.Duration(cfg.Realm.AccessTokenLifespan)*time.Second)
 
 	resp := TokenResponse{
 		AccessToken: accessToken,
 		TokenType:   "Bearer",
 		ExpiresIn:   cfg.Realm.AccessTokenLifespan,
-		Scope:       scope,
+		Scope:       tokenScope,
 	}
 
-	// Issue refresh token
-	if strings.Contains(scope, "offline_access") || client.StandardFlowEnabled {
+	if withRefresh {
 		resp.RefreshToken = store.CreateRefreshToken(
-			client.ClientID, username, scope,
+			client.ClientID, username, grantedStr,
 			time.Duration(cfg.Realm.RefreshTokenLifespan)*time.Second,
 		)
 	}
 
-	// Issue ID token if openid scope requested
-	if strings.Contains(scope, "openid") {
+	// Issue an ID token only when "openid" was requested.
+	if config.HasScope(grantedStr, config.ScopeOpenID) {
+		idAud := jwt.ClaimStrings(cfg.IDTokenAudience(client, granted))
 		idClaims := opcrypto.IDTokenClaims{
 			RegisteredClaims: jwt.RegisteredClaims{
 				Issuer:    issuer,
 				Subject:   sub,
-				Audience:  jwt.ClaimStrings{client.ClientID},
+				Audience:  idAud,
 				IssuedAt:  jwt.NewNumericDate(now),
 				ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(cfg.Realm.AccessTokenLifespan) * time.Second)),
 				ID:        uuid.New().String(),
 			},
-			Nonce:         nonce,
-			AuthTime:      now.Unix(),
-			ACR:           "1",
-			AZP:           client.ClientID,
-			Name:          name,
-			GivenName:     givenName,
-			FamilyName:    familyName,
-			Email:         email,
-			EmailVerified: emailVerified,
-			Extra:         client.ResolveMappers(user, "id.token"),
+			Typ:               "ID",
+			Nonce:             nonce,
+			AuthTime:          now.Unix(),
+			ACR:               "1",
+			AZP:               client.ClientID,
+			PreferredUsername: preferredUsername,
+			Name:              name,
+			GivenName:         givenName,
+			FamilyName:        familyName,
+			Email:             email,
+			EmailVerified:     emailVerified,
+			Extra:             cfg.ResolveClaims(client, granted, user, "id.token"),
 		}
 		idToken, err := kp.SignIDToken(idClaims)
 		if err != nil {

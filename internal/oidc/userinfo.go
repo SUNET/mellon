@@ -78,22 +78,22 @@ func HandleUserInfo(cfg *config.Config, kp *opcrypto.KeyPair, store *session.Sto
 		client := cfg.FindClient(at.ClientID)
 
 		resp := UserInfoResponse{
-			Sub:               user.Username,
-			PreferredUsername: user.Username,
+			Sub: user.Username,
 		}
 
 		scope := at.Scope
-		if strings.Contains(scope, "profile") {
+		if config.HasScope(scope, "profile") {
+			resp.PreferredUsername = user.Username
 			resp.Name = strings.TrimSpace(user.FirstName + " " + user.LastName)
 			resp.GivenName = user.FirstName
 			resp.FamilyName = user.LastName
 		}
-		if strings.Contains(scope, "email") {
+		if config.HasScope(scope, "email") {
 			resp.Email = user.Email
 			resp.EmailVerified = user.EmailVerified
 		}
 
-		resp.Extra = client.ResolveMappers(user, "userinfo.token")
+		resp.Extra = cfg.ResolveClaims(client, strings.Fields(scope), user, "userinfo.token")
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)

@@ -11,7 +11,10 @@ A lightweight OpenID Connect Provider (OP) written in Go, intended for **integra
 This service uses the same realm configuration format as Keycloak, including:
 
 - **Realm JSON import** — configure clients, users, roles, and credentials using Keycloak's `realm.json` format.
-- **Protocol Mappers** — supports `oidc-usermodel-attribute-mapper` for mapping arbitrary user attributes to token claims (ID token, access token, and userinfo).
+- **Client scopes** — realm `clientScopes` and per-client `defaultClientScopes` / `optionalClientScopes`, enforced the way Keycloak does (see [Client scopes](#client-scopes)).
+- **Protocol Mappers** — on clients and on client scopes:
+  - `oidc-usermodel-attribute-mapper` maps arbitrary user attributes to token claims (ID token, access token, and userinfo).
+  - `oidc-audience-mapper` adds an audience (`included.client.audience` or `included.custom.audience`) to the access and/or ID token `aud`.
 - **Endpoint layout** — discovery, token, userinfo, JWKS, introspection, and logout endpoints follow Keycloak's `/realms/{realm}/protocol/openid-connect/` URL structure.
 
 ## Endpoints
@@ -34,7 +37,8 @@ This service uses the same realm configuration format as Keycloak, including:
 - Refresh Token flow
 - JWT signing with RS256, ES256, and EdDSA
 - Token introspection
-- Configurable protocol mappers for custom claims
+- Keycloak-style client scope enforcement (default / optional scopes, `invalid_scope`)
+- Configurable protocol mappers for custom claims and audiences
 - CORS for browser-based clients, driven by each client's `webOrigins`
 
 ## CORS
@@ -53,6 +57,67 @@ Browser-based clients (e.g. SPAs doing Authorization Code + PKCE) can call the t
 | `auth`, `login`, `logout`, `token/introspect` | No CORS headers (page loads or server-to-server).                                   |
 
 Access tokens carry an `allowed-origins` claim, as Keycloak's do. `OPTIONS` preflight requests on the CORS-enabled endpoints return `204` with `Access-Control-Allow-Methods`, `Access-Control-Allow-Headers: Authorization, Content-Type` and `Access-Control-Max-Age: 3600`; as in Keycloak, the preflight itself is permissive and the actual request enforces the origin. The allowed origin is always echoed (never a literal `*`), `Vary: Origin` is set, and `Access-Control-Allow-Credentials` is not sent.
+
+## Client scopes
+
+Granted scopes follow Keycloak:
+
+- All of the client's **default** client scopes are always granted, whether requested or not.
+- **Optional** client scopes are granted only when requested in `scope`.
+- `openid` is not a client scope. It is granted (and an ID token issued) only when requested; listing it in `defaultClientScopes` has no effect.
+- Requesting any other scope fails with `invalid_scope` (`400` from the token endpoint; a redirect with `error=invalid_scope` from the authorization endpoint).
+- On `refresh_token`, `scope` may narrow the original grant but not widen it.
+
+Which scopes exist:
+
+- If `realm.json` has no `clientScopes`, Keycloak's built-ins are used: `profile`, `email`, `roles`, `web-origins`, `acr`, `basic` (default) and `offline_access`, `phone`, `address`, `microprofile-jwt` (optional).
+- If `clientScopes` is present, **only** those scopes exist. References to undefined scopes are logged as a warning at startup and ignored, just like a Keycloak import. Remember to define `profile`/`email` yourself if clients use them.
+- A client that omits `defaultClientScopes` / `optionalClientScopes` inherits the realm's `defaultDefaultClientScopes` / `defaultOptionalClientScopes` (or the built-ins). An explicit `[]` means none.
+
+Token contents:
+
+- The `scope` claim lists `openid` plus the granted scopes, except those with the attribute `"include.in.token.scope": "false"` (by default `roles`, `web-origins`, `acr` and `basic`).
+- `name`, `given_name`, `family_name` and `preferred_username` are only included with `profile`; `email` and `email_verified` only with `email`.
+- Protocol mappers of the client **and** of every granted client scope are applied.
+- Access tokens carry `typ: "Bearer"` and `azp: <client_id>`. As in Keycloak, `aud` contains only the audiences added by audience mappers, and is omitted when there are none. ID tokens always have the client as `aud` (`typ: "ID"`).
+- `client_credentials` does not return a refresh token.
+
+### Audience
+
+To make tokens for an API carry `aud: "my-api"`, add an audience mapper, either to the client or to a client scope (then only tokens that were granted the scope get the audience):
+
+```json
+{
+  "clientScopes": [
+    {
+      "name": "my-api.read",
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "aud-my-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "my-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "svc",
+      "secret": "svc-secret",
+      "serviceAccountsEnabled": true,
+      "defaultClientScopes": ["my-api.read"]
+    }
+  ]
+}
+```
+
+A single audience is serialized as a string (`"aud": "my-api"`), several as an array. Token introspection also returns `aud`, `azp` and `typ`.
 
 ## Headless / Testcontainer Usage
 

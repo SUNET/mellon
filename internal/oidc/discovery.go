@@ -53,9 +53,9 @@ func HandleDiscovery(cfg *config.Config) http.HandlerFunc {
 				"code token",
 				"code id_token token",
 			},
-			SubjectTypesSupported:            []string{"public"},
+			SubjectTypesSupported:             []string{"public"},
 			IDTokenSigningAlgValuesSupported:  []string{string(cfg.GetAlgorithm())},
-			ScopesSupported:                  []string{"openid", "profile", "email", "offline_access"},
+			ScopesSupported:                   cfg.SupportedScopes(),
 			TokenEndpointAuthMethodsSupported: []string{"client_secret_basic", "client_secret_post"},
 			ClaimsSupported: []string{
 				"sub", "iss", "aud", "iat", "exp", "auth_time", "nonce",

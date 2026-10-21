@@ -41,14 +41,39 @@ func HandleAuthorize(cfg *config.Config, store *session.Store) http.HandlerFunc 
 			challengeMethod = "plain"
 		}
 
+		// Keycloak rejects unknown scopes before authentication by
+		// redirecting back to the client with error=invalid_scope.
+		if _, err := cfg.GrantScopes(client, scope); err != nil {
+			redirectError(w, r, redirectURI, "invalid_scope", err.Error(), state)
+			return
+		}
+
 		// Store auth request params in query and redirect to login page
 		loginURL := fmt.Sprintf("/realms/%s/login?%s", cfg.Realm.Realm, r.URL.RawQuery)
 		http.Redirect(w, r, loginURL, http.StatusFound)
 		_ = store
-		_ = scope
-		_ = state
 		_ = nonce
 	}
+}
+
+// redirectError sends an OAuth 2.0 authorization error response to the
+// client's redirect URI (RFC 6749 section 4.1.2.1).
+func redirectError(w http.ResponseWriter, r *http.Request, redirectURI, errCode, description, state string) {
+	u, err := url.Parse(redirectURI)
+	if err != nil {
+		http.Error(w, errCode, http.StatusBadRequest)
+		return
+	}
+	q := u.Query()
+	q.Set("error", errCode)
+	if description != "" {
+		q.Set("error_description", description)
+	}
+	if state != "" {
+		q.Set("state", state)
+	}
+	u.RawQuery = q.Encode()
+	http.Redirect(w, r, u.String(), http.StatusFound)
 }
 
 func validateRedirectURI(client *config.ClientConfig, uri string) bool {
@@ -79,8 +104,25 @@ func CompleteAuthorize(w http.ResponseWriter, r *http.Request, cfg *config.Confi
 	codeChallenge := r.FormValue("code_challenge")
 	challengeMethod := r.FormValue("code_challenge_method")
 
+	// The login form round-trips the request parameters, so re-validate
+	// them rather than trusting the posted values.
+	client := cfg.FindClient(clientID)
+	if client == nil {
+		http.Error(w, "invalid_client", http.StatusBadRequest)
+		return
+	}
+	if !validateRedirectURI(client, redirectURI) {
+		http.Error(w, "invalid_redirect_uri", http.StatusBadRequest)
+		return
+	}
+	granted, err := cfg.GrantScopes(client, scope)
+	if err != nil {
+		redirectError(w, r, redirectURI, "invalid_scope", err.Error(), state)
+		return
+	}
+
 	code := store.CreateCode(
-		clientID, redirectURI, scope, nonce, username,
+		clientID, redirectURI, strings.Join(granted, " "), nonce, username,
 		codeChallenge, challengeMethod,
 		codeTTL(cfg),
 	)

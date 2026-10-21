@@ -9,16 +9,18 @@ import (
 
 type IDTokenClaims struct {
 	jwt.RegisteredClaims
-	Nonce         string                 `json:"nonce,omitempty"`
-	AuthTime      int64                  `json:"auth_time,omitempty"`
-	ACR           string                 `json:"acr,omitempty"`
-	AZP           string                 `json:"azp,omitempty"`
-	Name          string                 `json:"name,omitempty"`
-	GivenName     string                 `json:"given_name,omitempty"`
-	FamilyName    string                 `json:"family_name,omitempty"`
-	Email         string                 `json:"email,omitempty"`
-	EmailVerified bool                   `json:"email_verified,omitempty"`
-	Extra         map[string]any `json:"-"`
+	Typ               string         `json:"typ,omitempty"`
+	Nonce             string         `json:"nonce,omitempty"`
+	AuthTime          int64          `json:"auth_time,omitempty"`
+	ACR               string         `json:"acr,omitempty"`
+	AZP               string         `json:"azp,omitempty"`
+	PreferredUsername string         `json:"preferred_username,omitempty"`
+	Name              string         `json:"name,omitempty"`
+	GivenName         string         `json:"given_name,omitempty"`
+	FamilyName        string         `json:"family_name,omitempty"`
+	Email             string         `json:"email,omitempty"`
+	EmailVerified     bool           `json:"email_verified,omitempty"`
+	Extra             map[string]any `json:"-"`
 }
 
 func (c IDTokenClaims) MarshalJSON() ([]byte, error) {
@@ -27,7 +29,7 @@ func (c IDTokenClaims) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(c.Extra) == 0 {
+	if len(c.Extra) == 0 && len(c.Audience) != 1 {
 		return base, nil
 	}
 	return mergeJSON(base, c.Extra)
@@ -35,12 +37,17 @@ func (c IDTokenClaims) MarshalJSON() ([]byte, error) {
 
 type AccessTokenClaims struct {
 	jwt.RegisteredClaims
-	Scope             string                 `json:"scope,omitempty"`
-	ClientID          string                 `json:"client_id,omitempty"`
-	PreferredUsername string                 `json:"preferred_username,omitempty"`
-	Email             string                 `json:"email,omitempty"`
-	EmailVerified     bool                   `json:"email_verified,omitempty"`
-	AllowedOrigins    []string               `json:"allowed-origins,omitempty"`
+	Typ               string         `json:"typ,omitempty"`
+	AZP               string         `json:"azp,omitempty"`
+	Scope             string         `json:"scope,omitempty"`
+	ClientID          string         `json:"client_id,omitempty"`
+	PreferredUsername string         `json:"preferred_username,omitempty"`
+	Name              string         `json:"name,omitempty"`
+	GivenName         string         `json:"given_name,omitempty"`
+	FamilyName        string         `json:"family_name,omitempty"`
+	Email             string         `json:"email,omitempty"`
+	EmailVerified     bool           `json:"email_verified,omitempty"`
+	AllowedOrigins    []string       `json:"allowed-origins,omitempty"`
 	Extra             map[string]any `json:"-"`
 }
 
@@ -50,16 +57,21 @@ func (c AccessTokenClaims) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(c.Extra) == 0 {
+	if len(c.Extra) == 0 && len(c.Audience) != 1 {
 		return base, nil
 	}
 	return mergeJSON(base, c.Extra)
 }
 
+// mergeJSON adds extra claims that do not collide with standard ones and,
+// like Keycloak, serializes a single-valued "aud" as a plain string.
 func mergeJSON(base []byte, extra map[string]any) ([]byte, error) {
 	var m map[string]any
 	if err := json.Unmarshal(base, &m); err != nil {
 		return nil, err
+	}
+	if aud, ok := m["aud"].([]any); ok && len(aud) == 1 {
+		m["aud"] = aud[0]
 	}
 	for k, v := range extra {
 		if _, exists := m[k]; !exists {
