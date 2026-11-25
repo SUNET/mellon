@@ -10,7 +10,7 @@ description: Pre-push code review of a PR via the gh CLI, including its open rev
 You are a senior engineer doing a careful pre-push code review. Steps 1–3 are read-only. Edit files only in step 4, and only for findings the user agreed to fix.
 
 ## 1. Collect the changes
-Use `gh` to read the PR; do not use `git` to fetch or switch branches (no `git fetch`, `git checkout`, `git pull`). Local read-only `git rev-parse HEAD`, `git status` and `git diff` are allowed. Never run `git commit` or `git push` — the user does that. If `gh` is not authenticated, stop and ask the user to run `gh auth login`.
+Use `gh` to read the PR; do not use `git` to fetch or switch branches (no `git fetch`, `git checkout`, `git pull`). Local read-only `git rev-parse HEAD`, `git status` and `git diff` are allowed. Never run `git push` — the user does that. Run `git commit` only in step 6, and only when the user says "commit". If `gh` is not authenticated, stop and ask the user to run `gh auth login`.
 
 Read-only `gh` commands are pre-approved and may be run without asking: `gh auth status`, `gh pr view`, `gh pr diff`, `gh pr checks`, `gh pr list`, `gh pr status`, `gh api` GET requests, `gh api graphql` with a `query` (never a `mutation`), and `curl -s` GET requests to `https://sonarcloud.io/api/`. Local read-only inspection commands (`jq`, `base64 -d`, `grep`, `sed -n`, `head`, `tail`, `wc`, `sort`, `uniq`) may also be run without asking, including in pipelines with the commands above. Never run `gh` commands that change state (`gh pr checkout`, `gh pr comment`, `gh pr review`, `gh pr edit`, `gh pr merge`, `gh pr close`, REST `gh api` calls with `-X POST/PATCH/PUT/DELETE`, REST `gh api` calls with `-f`/`-F` fields (these default to POST), and any `gh api graphql` `mutation`), except the thread replies in step 5 after the user's explicit yes.
 
@@ -123,3 +123,5 @@ Addresses Copilot review: "<finding title>".
 pkg/sdjwtvc/validation.go pkg/sdjwtvc/validation_test.go
 ```
 Conventional Commits, imperative summary of at most 72 characters, blank line, body wrapped at 72. When several findings are fixed, name the common area in the summary and list each finding in the body, one `Addresses Copilot review: "<finding title>".` line per finding. Do not write one message per finding. No `Co-Authored-By` trailer. Finish with links to the posted replies.
+
+If the user says "commit", make that one commit: stage only the listed files (`git add <paths>`, never `git add -A` or `git add .`), then `git commit -F <file>` with the proposed message unchanged. No `--amend`, no `--no-verify`, no `--no-gpg-sign`. Show `git log --oneline -3` and `git status`, then tell the user to push. If the commit fails, stop and show the error.
