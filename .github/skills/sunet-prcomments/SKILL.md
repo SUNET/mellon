@@ -39,7 +39,7 @@ Keep threads where `isResolved` is false. Note `isOutdated` (the code moved sinc
 ## 2. Fetch findings that have NO thread
 These are easy to miss:
 - **Copilot review bodies:** `gh api repos/OWNER/REPO/pulls/N/reviews --paginate`. Copilot (`copilot-pull-request-reviewer`) often lists extra findings in the review body only (e.g. "Previously missed", "Needs a closer look"). Use the latest Copilot review; treat earlier body-only findings as open unless a later review marks them resolved or a later commit/comment clearly fixes them.
-- **Code scanning alerts** (github-advanced-security / CodeQL): `gh api "repos/OWNER/REPO/code-scanning/alerts?ref=refs/pull/N/head&state=open" --paginate`. Skip silently if code scanning is not enabled.
+- **Code scanning alerts** (github-advanced-security / CodeQL): `gh api "repos/OWNER/REPO/code-scanning/alerts?ref=refs/pull/N/merge&state=open" --paginate` (standard PR analyses run on the merge ref). If that returns no analysis, retry with `ref=refs/pull/N/head`. Skip silently if neither has an analysis or code scanning is not enabled.
 - **SonarCloud:** if a sonarqubecloud comment exists, read its quality-gate result, and for a public project fetch issues with `curl -s "https://sonarcloud.io/api/issues/search?componentKeys=PROJECTKEY&pullRequest=N&resolved=false&ps=100"` and hotspots with `curl -s "https://sonarcloud.io/api/hotspots/search?projectKey=PROJECTKEY&pullRequest=N&status=TO_REVIEW"` (the project key is in the dashboard link, e.g. `SUNET_vc`). If that fails, report the gate status and link only.
 - **Failing checks:** `gh pr checks N --repo OWNER/REPO`.
 - **Conversation comments** asking for changes: `gh pr view N --repo OWNER/REPO --comments`.
