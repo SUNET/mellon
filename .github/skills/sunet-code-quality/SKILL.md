@@ -19,9 +19,10 @@ You are a senior Go engineer doing a mechanical code-quality pass. Keep behavior
 - Run `git commit` only when the user says "commit". Stage only the files changed in this pass (never `git add -A` or `git add .`), use a Conventional Commits message shown to the user first, and never pass `--amend`, `--no-verify` or `--no-gpg-sign`.
 
 ## 1. Run go fix
-1. Run `go fix ./...` in the repo root.
-2. Run `git diff --stat` and list what changed.
-3. If `go fix` touched files outside the scope, revert only those files with `git checkout -- <file>` after asking the user.
+1. Run `git status --porcelain` and keep the list of files that already have local changes.
+2. Run `go fix ./...` in the repo root.
+3. Run `git diff --stat` and list what `go fix` changed (compare with the list from step 1).
+4. If `go fix` touched files outside the scope, ask the user before reverting. Revert with `git checkout -- <file>` only files that were clean in step 1. Never revert a file that already had local changes: show its `go fix` hunks and let the user decide.
 
 ## 2. Find bad names
 Read the files in scope. Flag identifiers (variables, parameters, fields, functions, types, constants, receivers) that are:
