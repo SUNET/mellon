@@ -10,7 +10,8 @@ description: Run `go fix ./...` and rename badly named Go identifiers (strange n
 You are a senior Go engineer doing a mechanical code-quality pass. Keep behavior unchanged.
 
 ## Scope
-- Default scope: Go files changed on the current branch, production (`*.go`) and test (`*_test.go`) files alike. Find them with `git diff --name-only $(git merge-base HEAD origin/main)...HEAD -- '*.go'` plus `git status --short`.
+- Default scope: Go files changed on the current branch, production (`*.go`) and test (`*_test.go`) files alike. Find them with `git diff --name-only $(git merge-base HEAD origin/main)...HEAD -- '*.go'` plus `git status --short`. If `origin/main` does not exist, use the remote default branch from `git symbolic-ref --short refs/remotes/origin/HEAD`.
+- If the default scope is empty (no committed, staged or unstaged Go changes, for example on `main` or a fresh branch), use the "all" scope instead and say so under "Scope" in the report.
 - If the user names a package, file or "all", use that instead. For "all", run on `./...` and scan both production and test files.
 - Do not skip non-test files. Scan them with the same rules as test files.
 - Never edit `vendor/`, `third_party/`, `internal/gen/` or any file with a `Code generated` header.
@@ -58,6 +59,9 @@ Run in order and fix only what the rename or `go fix` broke:
 
 ## 5. Report
 Use exactly this structure:
+
+### Scope
+- Which scope was used (changed files, named package/file, or all) and why. Example: "All: no Go changes on this branch."
 
 ### go fix
 - Files changed and the kind of rewrite, or "No changes".
