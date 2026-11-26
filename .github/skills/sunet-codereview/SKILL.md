@@ -41,7 +41,7 @@ Fetch every open finding on the PR. These are part of the report, not just backg
           pageInfo { hasNextPage endCursor }
           nodes {
             id isResolved isOutdated path line originalLine
-            comments(first:50) { nodes { databaseId author { login } body createdAt url } }
+            comments(first:100) { totalCount nodes { databaseId author { login } body createdAt url } }
           }
         }
       }
@@ -49,6 +49,20 @@ Fetch every open finding on the PR. These are part of the report, not just backg
   }'
   ```
   Keep threads where `isResolved` is false. For `isOutdated` threads, still check whether the issue exists at the PR head.
+  If a kept thread has more comments (`comments.totalCount`) than were returned, fetch the rest before classifying it, because later replies may explain a fix or intended behaviour:
+  ```
+  gh api graphql --paginate -F id=THREAD_ID -f query='
+  query($id:ID!, $endCursor:String) {
+    node(id:$id) {
+      ... on PullRequestReviewThread {
+        comments(first:100, after:$endCursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes { databaseId author { login } body createdAt url }
+        }
+      }
+    }
+  }'
+  ```
 - **Copilot review bodies** (findings without a thread): `gh api repos/OWNER/REPO/pulls/N/reviews --paginate`. Use the latest `copilot-pull-request-reviewer` review; treat earlier body-only findings as open unless a later commit or comment clearly fixes them.
 - **Code scanning alerts:** `gh api "repos/OWNER/REPO/code-scanning/alerts?ref=refs/pull/N/merge&state=open" --paginate` (standard PR analyses run on the merge ref). If that returns no analysis, retry with `ref=refs/pull/N/head`. Skip silently if neither has an analysis or code scanning is not enabled.
 - **SonarCloud** (if a sonarqubecloud comment exists; project key from the dashboard link, e.g. `SUNET_vc`):

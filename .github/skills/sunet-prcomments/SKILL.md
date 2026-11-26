@@ -26,7 +26,7 @@ query($owner:String!, $repo:String!, $number:Int!, $endCursor:String) {
         pageInfo { hasNextPage endCursor }
         nodes {
           id isResolved isOutdated path line originalLine
-          comments(first:50) { nodes { id databaseId author { login } body createdAt url } }
+          comments(first:100) { totalCount nodes { id databaseId author { login } body createdAt url } }
         }
       }
     }
@@ -35,6 +35,22 @@ query($owner:String!, $repo:String!, $number:Int!, $endCursor:String) {
 ```
 
 Keep threads where `isResolved` is false. Note `isOutdated` (the code moved since the comment) and still check whether the issue exists in the current code.
+
+If a kept thread has more comments (`comments.totalCount`) than were returned, fetch the rest before classifying it, because later replies may explain a fix or intended behaviour:
+
+```
+gh api graphql --paginate -F id=THREAD_ID -f query='
+query($id:ID!, $endCursor:String) {
+  node(id:$id) {
+    ... on PullRequestReviewThread {
+      comments(first:100, after:$endCursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes { id databaseId author { login } body createdAt url }
+      }
+    }
+  }
+}'
+```
 
 ## 2. Fetch findings that have NO thread
 These are easy to miss:
